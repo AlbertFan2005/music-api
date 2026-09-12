@@ -2,6 +2,7 @@
   "name": "music-api",
   "version": "1.0.0",
   "dependencies": {
-    "NeteaseCloudMusicApi": "^4.27.0"
+    "NeteaseCloudMusicApi": "^4.27.0",
+    "@radicon/unblockneteasemusic": "^0.1.3"
   }
 }
