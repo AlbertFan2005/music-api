@@ -13,7 +13,7 @@ module.exports = async (req, res) => {
   const query = req.query || {};
 
   try {
-    // 1. 搜尋歌曲（取得歌曲名稱、歌手與專屬 Hash）
+    // 1. 搜尋歌曲
     if (path === 'search' || path === 'cloudsearch') {
       const keyword = query.keywords || '';
       const searchUrl = `https://songsearch.kugou.com/song_search_v2?keyword=${encodeURIComponent(keyword)}&page=1&pagesize=20&platform=WebFilter`;
@@ -28,10 +28,9 @@ module.exports = async (req, res) => {
       const lists = (data.data && data.data.lists) ? data.data.lists : [];
       const songs = lists.map(item => ({
         id: item.FileHash,
-        albumId: item.AlbumID,
+        albumId: item.AlbumID || '0',
         name: item.SongName.replace(/<\/?em>/g, ''),
-        artists: [{ name: item.SingerName.replace(/<\/?em>/g, '') }],
-        duration: item.Duration
+        artists: [{ name: item.SingerName.replace(/<\/?em>/g, '') }]
       }));
 
       return res.status(200).json({
@@ -41,21 +40,25 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 2. 解析整首歌曲的真實 MP3 串流與封面
+    // 2. 解析完整 MP3 音訊直鏈（採用官方開放桌面端接口）
     if (path === 'song/url' || path === 'song/url/v1') {
       const hash = query.id;
       const albumId = query.albumId || '0';
 
-      const detailUrl = `https://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=${hash}`;
-      const resp = await fetch(detailUrl, {
+      const playApi = `https://wwwapi.kugou.com/yy/index.php?r=play/getdata&hash=${hash}&album_id=${albumId}&mid=1`;
+      
+      const resp = await fetch(playApi, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.kugou.com/'
         }
       });
       const data = await resp.json();
+      const songInfo = data.data || {};
 
-      const playUrl = (data.url || '').replace(/^http:/, 'https:');
-      const pic = (data.imgUrl || '').replace('{size}', '400');
+      let playUrl = songInfo.play_url || songInfo.play_backup_url || '';
+      playUrl = playUrl.replace(/^http:/, 'https:');
+      const pic = songInfo.img || '';
 
       return res.status(200).json({
         code: 200,
