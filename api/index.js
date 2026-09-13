@@ -13,7 +13,7 @@ module.exports = async (req, res) => {
   const query = req.query || {};
 
   try {
-    // 1. 搜尋端點：全面支援周杰倫、各類流行歌手與歌曲
+    // 1. 搜尋歌曲
     if (path === 'search' || path === 'cloudsearch') {
       const term = query.keywords || '';
       const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=20&country=TW`;
@@ -39,16 +39,15 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 2. 音訊端點
-    if (path === 'song/url' || path === 'song/url/v1') {
-      const id = query.id;
-      return res.status(200).json({
-        code: 200,
-        data: [{
-          id: id,
-          url: query.streamUrl || `https://music.163.com/song/media/outer/url?id=${id}.mp3`
-        }]
-      });
+    // 2. 音訊直連串流代理 (確保任何手機與瀏覽器都不會被 CORS 阻擋)
+    if (path === 'stream') {
+      const audioUrl = query.url;
+      if (!audioUrl) return res.status(400).send("Missing audio url");
+
+      const audioResp = await fetch(audioUrl);
+      res.setHeader('Content-Type', audioResp.headers.get('content-type') || 'audio/mp4');
+      const buffer = await audioResp.arrayBuffer();
+      return res.send(Buffer.from(buffer));
     }
 
     return res.status(200).json({ status: "API is ready" });
