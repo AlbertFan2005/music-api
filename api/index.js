@@ -11,25 +11,23 @@ module.exports = async (req, res) => {
   path = path.replace(/^\/api\/?/, '').replace(/^\//, '');
 
   const query = req.query || {};
-  const AUDIUS_HOST = "https://discoveryprovider.audius.co";
-  const APP_NAME = "WaveSyncPlayer";
 
   try {
-    // 1. 搜尋歌曲
+    // 1. 搜尋歌曲（自動解析 VIP 完整音源）
     if (path === 'search' || path === 'cloudsearch') {
       const keyword = query.keywords || '';
-      const searchUrl = `${AUDIUS_HOST}/v1/tracks/search?query=${encodeURIComponent(keyword)}&app_name=${APP_NAME}`;
+      
+      // 呼叫具備 VIP 解鎖能力的 Meting 服務節點
+      const targetUrl = `https://api.qijieya.cn/meting/?type=search&id=${encodeURIComponent(keyword)}`;
+      const resp = await fetch(targetUrl);
+      const list = await resp.json();
 
-      const resp = await fetch(searchUrl);
-      const data = await resp.json();
-
-      const trackList = data.data || [];
-      const songs = trackList.map(item => ({
-        id: item.id,
-        name: item.title,
-        artists: [{ name: item.user ? item.user.name : "熱門音樂" }],
-        pic: item.artwork ? (item.artwork['480x480'] || item.artwork['150x150'] || '') : '',
-        duration: item.duration
+      const songs = (Array.isArray(list) ? list : []).map(item => ({
+        id: item.id || item.songid,
+        name: item.name || item.title,
+        artists: [{ name: item.artist || item.author || "周杰倫" }],
+        pic: item.pic || '',
+        url: item.url || `https://api.qijieya.cn/meting/?type=url&id=${item.id}`
       }));
 
       return res.status(200).json({
@@ -39,29 +37,19 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 2. 取得真實音訊 URL (伺服器自動跟隨 302 重定向，直接拿最終 MP3 直鏈)
+    // 2. 獲取音訊 URL
     if (path === 'song/url' || path === 'song/url/v1') {
       const id = query.id;
-      const initialStreamUrl = `${AUDIUS_HOST}/v1/tracks/${id}/stream?app_name=${APP_NAME}`;
-
-      // 使用 redirect: 'follow' 追蹤到真實檔案 CDN 位址
-      const headResp = await fetch(initialStreamUrl, {
-        method: 'GET',
-        redirect: 'follow'
-      });
-
-      const finalUrl = headResp.url || initialStreamUrl;
-
       return res.status(200).json({
         code: 200,
         data: [{
           id: id,
-          url: finalUrl
+          url: `https://api.qijieya.cn/meting/?type=url&id=${id}`
         }]
       });
     }
 
-    return res.status(200).json({ status: "API is active" });
+    return res.status(200).json({ status: "API ready" });
   } catch (err) {
     return res.status(200).json({ result: { songs: [] }, error: err.message });
   }
