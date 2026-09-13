@@ -1,4 +1,89 @@
 const NCM = require('NeteaseCloudMusicApi');
+const https = require('https');
+const http = require('http');
+
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  let path = req.url.split('?')[0];
+  path = path.replace(/^\/api\/?/, '').replace(/^\//, '');
+
+  if (!path) {
+    return res.status(200).json({ status: "API is ready" });
+  }
+
+  const query = req.query || {};
+
+  try {
+    // 1. 直鏈音訊代理 (直接把音訊串流丟回瀏覽器，繞過防盜鏈)
+    if (path === 'stream') {
+      const id = query.id;
+      if (!id) return res.status(400).send("Missing id");
+
+      // 取得實際播放音訊位址
+      let targetUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+      try {
+        const urlRes = await NCM['song_url']({ id, br: 128000 });
+        if (urlRes.body.data && urlRes.body.data[0] && urlRes.body.data[0].url) {
+          targetUrl = urlRes.body.data[0].url;
+        }
+      } catch (e) {}
+
+      // 重定向至目標音訊
+      return res.redirect(302, targetUrl);
+    }
+
+    // 2. 取得歌曲 URL
+    if (path === 'song/url' || path === 'song/url/v1') {
+      const id = query.id;
+      let streamUrl = null;
+
+      try {
+        const result = await NCM['song_url']({ id, br: 128000, cookie: query.cookie || '' });
+        if (result.body.data && result.body.data[0] && result.body.data[0].url) {
+          streamUrl = result.body.data[0].url.replace(/^http:/, 'https:');
+        }
+      } catch (e) {}
+
+      // 若官方未回傳有效連結，改走我們自己的 /api/stream 代理端點
+      if (!streamUrl) {
+        streamUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+      }
+
+      return res.status(200).json({
+        code: 200,
+        data: [{
+          id: Number(id),
+          url: streamUrl
+        }]
+      });
+    }
+
+    // 3. 搜尋處理
+    let action = path;
+    if (action === 'search' || action === 'cloudsearch') {
+      action = typeof NCM['cloudsearch'] === 'function' ? 'cloudsearch' : 'search';
+    }
+
+    if (typeof NCM[action] === 'function') {
+      const result = await NCM[action]({
+        ...query,
+        cookie: query.cookie || ''
+      });
+      return res.status(result.status || 200).json(result.body);
+    } else {
+      return res.status(404).json({ code: 404, message: `Action ${action} not found` });
+    }
+  } catch (err) {
+    return res.status(500).json({ code: 500, error: err.message });
+  }
+};const NCM = require('NeteaseCloudMusicApi');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
