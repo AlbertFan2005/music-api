@@ -12,25 +12,27 @@ module.exports = async (req, res) => {
 
   const query = req.query || {};
 
+  // 固定選擇穩定可用的 Audius 官方廣播節點
+  const AUDIUS_HOST = "https://discoveryprovider.audius.co";
+  const APP_NAME = "WaveSyncPlayer";
+
   try {
     // 1. 搜尋歌曲
     if (path === 'search' || path === 'cloudsearch') {
       const keyword = query.keywords || '';
-      const searchUrl = `https://songsearch.kugou.com/song_search_v2?keyword=${encodeURIComponent(keyword)}&page=1&pagesize=20&platform=WebFilter`;
+      const searchUrl = `${AUDIUS_HOST}/v1/tracks/search?query=${encodeURIComponent(keyword)}&app_name=${APP_NAME}`;
 
-      const resp = await fetch(searchUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
+      const resp = await fetch(searchUrl);
       const data = await resp.json();
 
-      const lists = (data.data && data.data.lists) ? data.data.lists : [];
-      const songs = lists.map(item => ({
-        id: item.FileHash,
-        albumId: item.AlbumID || '0',
-        name: item.SongName.replace(/<\/?em>/g, ''),
-        artists: [{ name: item.SingerName.replace(/<\/?em>/g, '') }]
+      const trackList = data.data || [];
+      const songs = trackList.map(item => ({
+        id: item.id,
+        name: item.title,
+        artists: [{ name: item.user ? item.user.name : "流行音樂" }],
+        pic: item.artwork ? (item.artwork['480x480'] || item.artwork['150x150'] || '') : '',
+        streamUrl: `${AUDIUS_HOST}/v1/tracks/${item.id}/stream?app_name=${APP_NAME}`,
+        duration: item.duration
       }));
 
       return res.status(200).json({
@@ -40,37 +42,21 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 2. 解析完整 MP3 音訊直鏈（採用官方開放桌面端接口）
+    // 2. 取得音訊 URL
     if (path === 'song/url' || path === 'song/url/v1') {
-      const hash = query.id;
-      const albumId = query.albumId || '0';
-
-      const playApi = `https://wwwapi.kugou.com/yy/index.php?r=play/getdata&hash=${hash}&album_id=${albumId}&mid=1`;
-      
-      const resp = await fetch(playApi, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Referer': 'https://www.kugou.com/'
-        }
-      });
-      const data = await resp.json();
-      const songInfo = data.data || {};
-
-      let playUrl = songInfo.play_url || songInfo.play_backup_url || '';
-      playUrl = playUrl.replace(/^http:/, 'https:');
-      const pic = songInfo.img || '';
+      const id = query.id;
+      const streamUrl = `${AUDIUS_HOST}/v1/tracks/${id}/stream?app_name=${APP_NAME}`;
 
       return res.status(200).json({
         code: 200,
         data: [{
-          id: hash,
-          url: playUrl,
-          pic: pic
+          id: id,
+          url: streamUrl
         }]
       });
     }
 
-    return res.status(200).json({ status: "API is ready" });
+    return res.status(200).json({ status: "API is active and healthy" });
   } catch (err) {
     return res.status(200).json({ result: { songs: [] }, error: err.message });
   }
