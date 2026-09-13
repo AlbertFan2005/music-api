@@ -11,8 +11,6 @@ module.exports = async (req, res) => {
   path = path.replace(/^\/api\/?/, '').replace(/^\//, '');
 
   const query = req.query || {};
-
-  // 固定選擇穩定可用的 Audius 官方廣播節點
   const AUDIUS_HOST = "https://discoveryprovider.audius.co";
   const APP_NAME = "WaveSyncPlayer";
 
@@ -29,9 +27,8 @@ module.exports = async (req, res) => {
       const songs = trackList.map(item => ({
         id: item.id,
         name: item.title,
-        artists: [{ name: item.user ? item.user.name : "流行音樂" }],
+        artists: [{ name: item.user ? item.user.name : "熱門音樂" }],
         pic: item.artwork ? (item.artwork['480x480'] || item.artwork['150x150'] || '') : '',
-        streamUrl: `${AUDIUS_HOST}/v1/tracks/${item.id}/stream?app_name=${APP_NAME}`,
         duration: item.duration
       }));
 
@@ -42,21 +39,29 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 2. 取得音訊 URL
+    // 2. 取得真實音訊 URL (伺服器自動跟隨 302 重定向，直接拿最終 MP3 直鏈)
     if (path === 'song/url' || path === 'song/url/v1') {
       const id = query.id;
-      const streamUrl = `${AUDIUS_HOST}/v1/tracks/${id}/stream?app_name=${APP_NAME}`;
+      const initialStreamUrl = `${AUDIUS_HOST}/v1/tracks/${id}/stream?app_name=${APP_NAME}`;
+
+      // 使用 redirect: 'follow' 追蹤到真實檔案 CDN 位址
+      const headResp = await fetch(initialStreamUrl, {
+        method: 'GET',
+        redirect: 'follow'
+      });
+
+      const finalUrl = headResp.url || initialStreamUrl;
 
       return res.status(200).json({
         code: 200,
         data: [{
           id: id,
-          url: streamUrl
+          url: finalUrl
         }]
       });
     }
 
-    return res.status(200).json({ status: "API is active and healthy" });
+    return res.status(200).json({ status: "API is active" });
   } catch (err) {
     return res.status(200).json({ result: { songs: [] }, error: err.message });
   }
