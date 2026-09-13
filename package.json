@@ -1,7 +1,4 @@
 {
   "name": "music-api",
-  "version": "1.0.0",
-  "dependencies": {
-    "NeteaseCloudMusicApi": "^4.27.0"
-  }
+  "version": "1.0.0"
 }
