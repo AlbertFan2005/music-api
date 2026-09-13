@@ -1,4 +1,69 @@
-const NCM = require('NeteaseCloudMusicApi');
+module.exports = async (req, res) => {
+  // 開啟跨域支援
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  let path = req.url.split('?')[0];
+  path = path.replace(/^\/api\/?/, '').replace(/^\//, '');
+
+  const query = req.query || {};
+
+  try {
+    // 1. 歌曲搜尋功能 (/api/search?keywords=...)
+    if (path === 'search' || path === 'cloudsearch') {
+      const keywords = query.keywords || '';
+      const limit = query.limit || 20;
+
+      const response = await fetch(`https://music.163.com/api/search/get?s=${encodeURIComponent(keywords)}&type=1&limit=${limit}&offset=0`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://music.163.com'
+        }
+      });
+      const data = await response.json();
+      return res.status(200).json(data);
+    }
+
+    // 2. 歌曲資訊與 URL 取得 (/api/song/url?id=...)
+    if (path === 'song/url' || path === 'song/url/v1') {
+      const id = query.id;
+      if (!id) return res.status(400).json({ code: 400, message: "Missing id" });
+
+      // 使用原生無防盜鏈的標準串流直鏈
+      const streamUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+
+      return res.status(200).json({
+        code: 200,
+        data: [{
+          id: Number(id),
+          url: streamUrl
+        }]
+      });
+    }
+
+    // 3. 歌曲詳情查詢 (/api/song/detail?ids=...)
+    if (path === 'song/detail') {
+      const ids = query.ids;
+      const response = await fetch(`https://music.163.com/api/song/detail/?id=${ids}&ids=[${ids}]`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://music.163.com'
+        }
+      });
+      const data = await response.json();
+      return res.status(200).json(data);
+    }
+
+    return res.status(200).json({ status: "API is alive and ready!" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};const NCM = require('NeteaseCloudMusicApi');
 const https = require('https');
 const http = require('http');
 
